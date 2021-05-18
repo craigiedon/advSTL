@@ -1,7 +1,7 @@
 import random
 import time
 from itertools import permutations, product, combinations_with_replacement
-from typing import Optional, Any, Tuple, List
+from typing import Optional, Any, Tuple, List, Sequence
 
 import numpy as np
 from probRobScene.core.plotUtil3d import draw_polyhedron, draw_convex
@@ -28,45 +28,51 @@ def inv_rosen(hypercube_design: np.ndarray, convex_hsi: np.ndarray) -> np.ndarra
     convex_set = HalfspaceIntersection(convex_hsi, feasible_point(convex_hsi))
     hull = ConvexHull(convex_set.intersections)
     lb, ub = hull_bounds(hull)
+    n_dims = hypercube_design.shape[1]
     transformed_designs = []
-    for axis_order in permutations(range(hypercube_design.shape[1])):
-        print(axis_order)
-        transformed_points = inv_cdf_convex_3d(hypercube_design, convex_hsi, axis_order)
+    for axis_order in permutations(range(n_dims)):
+        # print(axis_order)
+        if n_dims == 3:
+            transformed_points = inv_cdf_convex_3d(hypercube_design, convex_hsi, axis_order)
+        elif n_dims == 2:
+            transformed_points = inv_cdf_convex_2d(hypercube_design, convex_hsi, axis_order)
+        else:
+            raise ValueError(f"Currently only 2d and 3d shapes supported. This has {n_dims} dimensions")
         transformed_designs.append(transformed_points)
-        print("Transformed it")
+        # print("Transformed it")
 
         # ccd = central_composite_discrepancy(hull, transformed_points, 9)
         # print("CCD: ", ccd)
 
     ccds = [central_composite_discrepancy(hull, tp, 5) for tp in transformed_designs]
-    print("CCDs: ", ccds)
+    # print("CCDs: ", ccds)
     best_ccd, best_design = min(zip(ccds, transformed_designs), key=lambda x: x[0])
     worst_ccd, worst_design = max(zip(ccds, transformed_designs), key=lambda x: x[0])
 
-    print("Best: ", best_ccd)
-    print("Worst: ", worst_ccd)
+    # print("Best: ", best_ccd)
+    # print("Worst: ", worst_ccd)
 
-    fig = plt.figure()
-    ax1 = fig.add_subplot(121, projection='3d')
-    ax1.set_xlim(lb[0], ub[0])
-    ax1.set_ylim(lb[1], ub[1])
-    ax1.set_zlim(lb[2], ub[2])
-    ax1.set_xlabel("x")
-    ax1.set_ylabel("y")
-    ax1.set_zlabel("z")
-    draw_convex(ax1, convex_set, alpha=0.05)
-    ax1.scatter(*best_design.transpose(), c='g')
-
-    ax2 = fig.add_subplot(122, projection='3d')
-    ax2.set_xlim(lb[0], ub[0])
-    ax2.set_ylim(lb[1], ub[1])
-    ax2.set_zlim(lb[2], ub[2])
-    ax2.set_xlabel("x")
-    ax2.set_ylabel("y")
-    ax2.set_zlabel("z")
-    draw_convex(ax2, convex_set, alpha=0.05)
-    ax2.scatter(*worst_design.transpose(), c='r')
-    plt.show()
+    # fig = plt.figure()
+    # ax1 = fig.add_subplot(121, projection='3d')
+    # ax1.set_xlim(lb[0], ub[0])
+    # ax1.set_ylim(lb[1], ub[1])
+    # ax1.set_zlim(lb[2], ub[2])
+    # ax1.set_xlabel("x")
+    # ax1.set_ylabel("y")
+    # ax1.set_zlabel("z")
+    # draw_convex(ax1, convex_set, alpha=0.05)
+    # ax1.scatter(*best_design.transpose(), c='g')
+    #
+    # ax2 = fig.add_subplot(122, projection='3d')
+    # ax2.set_xlim(lb[0], ub[0])
+    # ax2.set_ylim(lb[1], ub[1])
+    # ax2.set_zlim(lb[2], ub[2])
+    # ax2.set_xlabel("x")
+    # ax2.set_ylabel("y")
+    # ax2.set_zlabel("z")
+    # draw_convex(ax2, convex_set, alpha=0.05)
+    # ax2.scatter(*worst_design.transpose(), c='r')
+    # plt.show()
 
     return best_design
 
@@ -128,25 +134,25 @@ def approx_volume(hull: ConvexHull, num_xs: int, num_ys: int) -> float:
     bounds = (np.min(hull.points), np.max(hull.points))
 
     cell_area = (bounds[1] - bounds[0]) * (bounds[1] - bounds[0]) / (num_xs * num_ys)
-    print(cell_area)
+    # print(cell_area)
     grid = np.mgrid[1:num_xs + 1, 1:num_ys + 1].swapaxes(0, 2)
     normed_grid = centred_normalize(grid, num_xs)
     bounds_grid = (bounds[1] - bounds[0]) * normed_grid + bounds[0]
 
     reshaped = bounds_grid.reshape(-1, 2)
-    print(in_hull_multi(reshaped, hull))
+    # print(in_hull_multi(reshaped, hull))
     convex_mask = in_hull_multi(reshaped, hull).reshape(num_xs, num_ys)
     # convex_mask = np.apply_along_axis(lambda p: in_hull(p, convex_hull), 1, reshaped).reshape(num_xs, num_ys)
 
     convex_hull_plot_2d(hull)
     ax = plt.gca()
     inside_points = bounds_grid[convex_mask]
-    print(inside_points.shape)
+    # print(inside_points.shape)
 
     # Print out what you know the volume to be, and what convex hull computes it as
     true_volume = hull.volume
     approx_volume = cell_area * inside_points.shape[0]
-    print("True Volume: ", true_volume)
+    # print("True Volume: ", true_volume)
     print("Approx Volume: ", approx_volume)
     plt.xlim(0, 6)
     plt.ylim(0, 6)
@@ -216,12 +222,10 @@ def inv_cdf_x1_given_x0_convex(convex_hsis: np.ndarray, u: float, given_x0: floa
     return u * line_end[axis] + (1.0 - u) * line_start[axis]
 
 
-def inv_cdf_convex_2d(unit_square_design: np.ndarray, convex_hsis: np.ndarray) -> np.ndarray:
+def inv_cdf_convex_2d(unit_square_design: np.ndarray, convex_hsis: np.ndarray, axis_order: List[int]) -> np.ndarray:
     convex_set = HalfspaceIntersection(convex_hsis, feasible_point(convex_hsis))
     convex_hull = ConvexHull(convex_set.intersections)
     ch_lb, ch_ub = hull_bounds(convex_hull)
-
-    axis_order = [0, 1]
 
     transformed_x0 = [
         brentq(lambda x0: cdf_x0_convex(convex_hsis, x0, axis_order[0]) - target, ch_lb[axis_order[0]],
@@ -240,7 +244,7 @@ def inv_cdf_convex_2d(unit_square_design: np.ndarray, convex_hsis: np.ndarray) -
     return ordered_transformed
 
 
-def inv_cdf_convex_3d(unit_cube_design: np.ndarray, convex_hsis: np.ndarray, axis_order: List[int]) -> np.ndarray:
+def inv_cdf_convex_3d(unit_cube_design: np.ndarray, convex_hsis: np.ndarray, axis_order: Sequence[int]) -> np.ndarray:
     convex_set = HalfspaceIntersection(convex_hsis, feasible_point(convex_hsis))
     convex_hull = ConvexHull(convex_set.intersections)
     lb_3d, ub_3d = hull_bounds(convex_hull)
