@@ -24,6 +24,20 @@ def in_hull_multi(points: np.ndarray, hull: ConvexHull) -> np.ndarray:
     return np.all(lhs <= np.zeros(hsi_eqns.shape[0]), axis=1)
 
 
+def inv_rosen_given_dependencies(hypercube_design: np.ndarray, convex_hsis: List[np.ndarray]) -> np.ndarray:
+    assert len(hypercube_design) == len(convex_hsis)
+
+    axis_order = [0, 1, 2]
+    transformed_points = []
+    for i in range(len(convex_hsis)):
+        transformed_point = inv_cdf_convex_2d_single(hypercube_design[i], convex_hsis[i], axis_order)
+        transformed_points.append(transformed_point)
+
+    print(transformed_points)
+
+    return np.array(transformed_points)
+
+
 def inv_rosen(hypercube_design: np.ndarray, convex_hsi: np.ndarray) -> np.ndarray:
     convex_set = HalfspaceIntersection(convex_hsi, feasible_point(convex_hsi))
     hull = ConvexHull(convex_set.intersections)
@@ -49,7 +63,7 @@ def inv_rosen(hypercube_design: np.ndarray, convex_hsi: np.ndarray) -> np.ndarra
     best_ccd, best_design = min(zip(ccds, transformed_designs), key=lambda x: x[0])
     worst_ccd, worst_design = max(zip(ccds, transformed_designs), key=lambda x: x[0])
 
-    # print("Best: ", best_ccd)
+    print("Best: ", best_ccd)
     # print("Worst: ", worst_ccd)
 
     # fig = plt.figure()
@@ -102,6 +116,7 @@ def central_composite_discrepancy(hull: ConvexHull, exp_design: np.ndarray, axis
         integral_part += (1.0 / (2 ** n_dims)) * partition_sum
 
     ccd = ((1.0 / hull_vol) * integral_part) ** 0.5
+    print(ccd)
     return ccd
 
 
@@ -222,6 +237,22 @@ def inv_cdf_x1_given_x0_convex(convex_hsis: np.ndarray, u: float, given_x0: floa
     return u * line_end[axis] + (1.0 - u) * line_start[axis]
 
 
+def inv_cdf_convex_2d_single(unit_point: np.ndarray, convex_hsi: np.ndarray, axis_order: List[int]) -> np.ndarray:
+    convex_set = HalfspaceIntersection(convex_hsi, feasible_point(convex_hsi))
+    convex_hull = ConvexHull(convex_set.intersections)
+    ch_lb, ch_ub = hull_bounds(convex_hull)
+
+    transformed_x0 = brentq(lambda x0: cdf_x0_convex(convex_hsi, x0, axis_order[0]) - unit_point[axis_order[0]], ch_lb[axis_order[0]], ch_ub[axis_order[0]])
+    transformed_x1 = inv_cdf_x1_given_x0_convex(convex_hsi, unit_point[axis_order[1]], transformed_x0, axis_order[1])
+
+    # If the "axis_order" differed from the true cartesian "xyz" ordering, then we must rearrange axes first
+    ordered_transformed = np.array(unpermute([transformed_x0, transformed_x1], axis_order)).transpose()
+
+    return ordered_transformed
+
+
+
+
 def inv_cdf_convex_2d(unit_square_design: np.ndarray, convex_hsis: np.ndarray, axis_order: List[int]) -> np.ndarray:
     convex_set = HalfspaceIntersection(convex_hsis, feasible_point(convex_hsis))
     convex_hull = ConvexHull(convex_set.intersections)
@@ -237,9 +268,7 @@ def inv_cdf_convex_2d(unit_square_design: np.ndarray, convex_hsis: np.ndarray, a
         transformed_x1.append(x1)
 
     # If the "axis_order" differed from the true cartesian "xyz" ordering, then we must rearrange axes first
-    ordered_transformed = np.array(
-        list(zip(*sorted(zip(axis_order, [transformed_x0, transformed_x1]))))[1]
-    ).transpose()
+    ordered_transformed = np.array(unpermute([transformed_x0, transformed_x1], axis_order)).transpose()
 
     return ordered_transformed
 
@@ -251,13 +280,8 @@ def inv_cdf_convex_3d(unit_cube_design: np.ndarray, convex_hsis: np.ndarray, axi
 
     # F(X0)
     x0_start = time.perf_counter()
-    # transformed_x0 = bisect_multi_monotonic(unit_cube_design[:, axis_order[0]],
-    #                                         lambda x0: cdf_x0_convex(convex_hsis, x0, axis_order[0]),
-    #                                         lb_3d[axis_order[0]], ub_3d[axis_order[0]])
     transformed_x0 = [brentq(lambda x0: cdf_x0_convex(convex_hsis, x0, axis_order[0]) - target, lb_3d[axis_order[0]],
                              ub_3d[axis_order[0]], xtol=1e-4) for target in unit_cube_design[:, axis_order[0]]]
-
-    # print(f"X0 time {time.perf_counter() - x0_start}")
 
     # F(X1 | X0)
     transformed_x1 = []
@@ -277,10 +301,6 @@ def inv_cdf_convex_3d(unit_cube_design: np.ndarray, convex_hsis: np.ndarray, axi
 
         x1 = brentq(lambda x0: cdf_x0_convex(proj_hsi_2d.halfspaces, x0, proj_ax) - unit_cube_design[i, axis_order[1]],
                     lb_2d[proj_ax], ub_2d[proj_ax], xtol=1e-4)
-        # x1 = bisect_method(unit_cube_design[i, axis_order[1]],
-        #                    lambda x0: cdf_x0_convex(proj_hsi_2d.halfspaces, x0, proj_ax), lb_2d[proj_ax],
-        #                    ub_2d[proj_ax])
-        # print("Ridder: ", x1_ridder, "Bisect: ", x1)
 
         transformed_x1.append(x1)
 
@@ -293,13 +313,45 @@ def inv_cdf_convex_3d(unit_cube_design: np.ndarray, convex_hsis: np.ndarray, axi
         x2 = inv_cdf_x1_given_x0_convex(proj_hsi_2d.halfspaces, unit_cube_design[i, axis_order[2]], x1, line_ax)
         transformed_x2.append(x2)
 
-    # print(f"X1X2 time: {time.perf_counter() - x1x2_start}")
-
-    ordered_transformed = np.array(
-        list(zip(*sorted(zip(axis_order, [transformed_x0, transformed_x1, transformed_x2]))))[1]
-    ).transpose()
+    ordered_transformed = np.array(unpermute([transformed_x0, transformed_x1, transformed_x2], axis_order)).transpose()
 
     return ordered_transformed
+
+
+def inv_cdf_convex_3d_single(unit_point: np.ndarray, convex_hsi: np.ndarray, axis_order: List[int]) -> np.ndarray:
+    convex_set = HalfspaceIntersection(convex_hsi, feasible_point(convex_hsi))
+    convex_hull = ConvexHull(convex_set.intersections)
+    lb_3d, ub_3d = hull_bounds(convex_hull)
+
+    # F(X0)
+    transformed_x0 = brentq(lambda x0: cdf_x0_convex(convex_hsi, x0, axis_order[0]) - unit_point[axis_order[0]], lb_3d[axis_order[0]], ub_3d[axis_order[0]], xtol=1e-4)
+    proj_hsi_2d = proj_hsi_axis_plane(convex_set, axis_order[0], transformed_x0)
+    hull_2d = ConvexHull(proj_hsi_2d.intersections)
+    lb_2d, ub_2d = hull_bounds(hull_2d)
+
+    if axis_order[0] < axis_order[1]:
+        proj_ax = axis_order[1] - 1
+    else:
+        proj_ax = axis_order[1]
+
+    # F(X1 | X0)
+    transformed_x1 = brentq(lambda x0: cdf_x0_convex(proj_hsi_2d.halfspaces, x0, proj_ax) - unit_point[axis_order[1]], lb_2d[proj_ax], ub_2d[proj_ax], xtol=1e-4)
+
+    # F(X2 | X0, X1)
+    if axis_order[0] < axis_order[2]:
+        line_ax = axis_order[2] - 1
+    else:
+        line_ax = axis_order[2]
+
+    transformed_x2 = inv_cdf_x1_given_x0_convex(proj_hsi_2d.halfspaces, unit_point[axis_order[2]], transformed_x1, line_ax)
+
+    ordered_transformed = np.array(unpermute([transformed_x0, transformed_x1, transformed_x2], axis_order)).transpose()
+
+    return ordered_transformed
+
+
+def unpermute(items: Sequence[Any], permuted_order: Sequence[int]) -> Sequence[Any]:
+    return list(zip(*sorted(zip(permuted_order, items))))[1]
 
 
 def norm_vecs(v: np.ndarray) -> np.ndarray:
