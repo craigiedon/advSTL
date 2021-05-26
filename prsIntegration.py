@@ -129,7 +129,7 @@ def unif_design_from_scenario(scenario: Scenario, n: int) -> List[Scene]:
         instantiated_objects = [o._conditioned.sample_given_dependencies(design_instances) for o in scenario.objects]
         scenes.append(Scene(scenario.workspace, instantiated_objects, scenario.params))
 
-    print(scenes)
+    # print(scenes)
 
     return scenes
 

@@ -39,7 +39,8 @@ def inv_rosen_given_dependencies(hypercube_design: np.ndarray, convex_hsis: List
 
 
 def inv_rosen(hypercube_design: np.ndarray, convex_hsi: np.ndarray) -> np.ndarray:
-    convex_set = HalfspaceIntersection(convex_hsi, feasible_point(convex_hsi))
+    fp = feasible_point(convex_hsi)
+    convex_set = HalfspaceIntersection(convex_hsi, fp)
     hull = ConvexHull(convex_set.intersections)
     lb, ub = hull_bounds(hull)
     n_dims = hypercube_design.shape[1]
@@ -58,12 +59,14 @@ def inv_rosen(hypercube_design: np.ndarray, convex_hsi: np.ndarray) -> np.ndarra
         # ccd = central_composite_discrepancy(hull, transformed_points, 9)
         # print("CCD: ", ccd)
 
-    ccds = [central_composite_discrepancy(hull, tp, 5) for tp in transformed_designs]
+    g_num = 5
+    ccds = [central_composite_discrepancy(hull, tp, g_num) for tp in transformed_designs]
     # print("CCDs: ", ccds)
+
     best_ccd, best_design = min(zip(ccds, transformed_designs), key=lambda x: x[0])
     worst_ccd, worst_design = max(zip(ccds, transformed_designs), key=lambda x: x[0])
 
-    print("Best: ", best_ccd)
+    # print("Best: ", ccds.index(best_ccd), best_ccd)
     # print("Worst: ", worst_ccd)
 
     # fig = plt.figure()
@@ -101,6 +104,10 @@ def central_composite_discrepancy(hull: ConvexHull, exp_design: np.ndarray, axis
     spacings = [centred_normalize(np.arange(1, axis_division + 1), axis_division) * (ub[i] - lb[i]) + lb[i] for i in
                 range(n_dims)]
     subregion_centres = np.array(list(product(*spacings)))
+    subregion_area = np.product([np.abs(ub[i] - lb[i]) / axis_division for i in range(n_dims)])
+
+    # print("Bounds: ", lb, ub)
+    # print("Area: ", subregion_area)
 
     for x in subregion_centres:
         partition_sum = 0.0
@@ -113,10 +120,10 @@ def central_composite_discrepancy(hull: ConvexHull, exp_design: np.ndarray, axis
             partition_vol_prop = partition.volume / hull_vol
             p_val = (points_in_hull_prop - partition_vol_prop) ** 2
             partition_sum += p_val
-        integral_part += (1.0 / (2 ** n_dims)) * partition_sum
+        integral_part += subregion_area * (1.0 / (2 ** n_dims)) * partition_sum
 
     ccd = ((1.0 / hull_vol) * integral_part) ** 0.5
-    print(ccd)
+    # print(ccd)
     return ccd
 
 
@@ -441,7 +448,7 @@ def run():
     ])
     # print(feasible_point(cube_hsi))
 
-    cube_points = good_lattice_point(3, 31)
+    cube_points = good_lattice_point(3, 13)
     inv_rosen(cube_points, hsis)
     #
     # convex_set = HalfspaceIntersection(hsis, feasible_point(hsis))
